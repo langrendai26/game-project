@@ -1,0 +1,50 @@
+[gd_scene format=3 uid="uid://plp1xnjwyv57"]
+
+[ext_resource type="Script" uid="uid://4dowqmu5d5rd" path="res://scripts/MainMenu.gd" id="1_0fbet"]
+[ext_resource type="Texture2D" uid="uid://b1n6slra6cg7g" path="res://textures/动漫风格深海龙女 (10).png" id="2_62e2m"]
+
+[node name="Control" type="Control" unique_id=185830054]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("1_0fbet")
+
+[node name="ColorRect" type="TextureRect" parent="." unique_id=182814855]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.05
+anchor_top = 0.1
+anchor_right = 71.15
+anchor_bottom = 40.1
+scale = Vector2(0.53667766, 0.53946537)
+texture = ExtResource("2_62e2m")
+metadata/_edit_use_anchors_ = true
+
+[node name="Label" type="Label" parent="." unique_id=1820025970]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -4.669
+anchor_top = -7.0270004
+anchor_right = -4.669
+anchor_bottom = -7.0270004
+offset_left = 1374.76
+offset_top = 533.08
+offset_right = 1706.2805
+offset_bottom = 689.46497
+scale = Vector2(0.5670844, 0.62026435)
+text = "混
+沌
+修
+真
+诀"
+horizontal_alignment = 1
+
+[node name="StartButton" type="Button" parent="." unique_id=572869871]
+layout_mode = 0
+offset_left = 711.0
+offset_top = 638.00006
+offset_right = 783.0
+offset_bottom = 693.923
+scale = Vector2(0.7816884, 0.6242564)
+text = "开始游戏"

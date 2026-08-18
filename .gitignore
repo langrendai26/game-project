@@ -1,0 +1,11 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Sandbox log redirect (per project memory)
+/run.log
+*.log
+test_crash_log.txt
+
+# Pre-rewrite backup (excluded per user choice)
+/backup/

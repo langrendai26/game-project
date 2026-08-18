@@ -1,0 +1,115 @@
+[gd_scene format=3 uid="uid://3lw00jofjqi6"]
+
+[ext_resource type="Script" uid="uid://cqaqvt2or417y" path="res://Player.gd" id="1_uqpb6"]
+[ext_resource type="Script" uid="uid://byir0xv7ukhpi" path="res://GameScene.gd" id="1_x38ih"]
+[ext_resource type="Texture2D" uid="uid://dnd80u1p6lmb8" path="res://textures/动漫风格深海龙女 (8).png" id="4_4663s"]
+
+[node name="GameScene" type="Node2D" unique_id=200267934]
+script = ExtResource("1_x38ih")
+
+[node name="Player" type="Node2D" parent="." unique_id=1676666942]
+script = ExtResource("1_uqpb6")
+metadata/player_group = true
+
+[node name="Background" type="Sprite2D" parent="." unique_id=2113335926]
+position = Vector2(11, -203)
+region_enabled = true
+
+[node name="TextureRect" type="TextureRect" parent="." unique_id=741465333]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 1.0
+offset_top = 3.0
+offset_right = 2849.0
+offset_bottom = 1603.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.5410726, 0.5410726)
+texture = ExtResource("4_4663s")
+stretch_mode = 2
+
+[node name="UILayer" type="CanvasLayer" parent="." unique_id=71259771]
+
+[node name="Label" type="Label" parent="UILayer" unique_id=1504170333]
+modulate = Color(1, 1, 0, 1)
+offset_right = 101.0
+offset_bottom = 27.0
+text = "混沌修真诀"
+
+[node name="Label2" type="Label" parent="UILayer" unique_id=1971500906]
+modulate = Color(0, 1, 1, 1)
+self_modulate = Color(5.3924317, 5.3924317, 5.3924317, 0.99607843)
+offset_left = 1.0
+offset_top = 48.0
+offset_right = 246.0
+offset_bottom = 112.0
+text = "等级: 1 | 境界: 炼气期
+生命: 100/100 | 攻击: 10 | 防御: 5"
+
+[node name="MeditateButton" type="Button" parent="UILayer" unique_id=1766484672]
+offset_left = 75.0
+offset_top = 627.0
+offset_right = 209.0
+offset_bottom = 695.0
+text = "修炼"
+icon_alignment = 1
+
+[node name="BattleButton" type="Button" parent="UILayer" unique_id=1030508211]
+offset_left = 317.0
+offset_top = 626.0
+offset_right = 437.0
+offset_bottom = 693.0
+text = "战斗"
+
+[node name="QuestButton" type="Button" parent="UILayer" unique_id=1234567890]
+offset_left = 559.0
+offset_top = 626.0
+offset_right = 679.0
+offset_bottom = 693.0
+text = "任务"
+
+[node name="ShopButton" type="Button" parent="UILayer" unique_id=-1949288395]
+offset_left = 801.0
+offset_top = 626.0
+offset_right = 921.0
+offset_bottom = 693.0
+text = "商店"
+
+[node name="EquipmentButton" type="Button" parent="UILayer" unique_id=501230138]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -110.0
+offset_top = 37.0
+offset_right = -16.0
+offset_bottom = 111.0
+grow_horizontal = 0
+text = "装备"
+
+[node name="InventoryButton" type="Button" parent="UILayer" unique_id=1363502390]
+modulate = Color(2.4453344, 0, 1.1068641, 1)
+anchors_preset = -1
+anchor_left = 0.47700003
+anchor_top = 0.51900005
+anchor_right = 0.47700003
+anchor_bottom = 0.51900005
+offset_left = -617.88007
+offset_top = -234.39005
+offset_right = -563.88007
+offset_bottom = -175.39005
+grow_horizontal = 2
+grow_vertical = 2
+text = "背包"
+
+[node name="SaveButton" type="Button" parent="UILayer" unique_id=-838178284]
+modulate = Color(0, 0.92156863, 1, 1)
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -257.0
+offset_top = 37.0
+offset_right = -120.0
+offset_bottom = 111.0
+grow_horizontal = 0
+text = "存档"

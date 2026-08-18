@@ -1,0 +1,66 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/Equipment.gd" id="1"]
+
+[node name="EquipmentScene" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="Background" type="ColorRect" parent="CanvasLayer"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.8)
+
+[node name="BackButton" type="Button" parent="CanvasLayer"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 96.0
+offset_bottom = 56.0
+text = "返回"
+
+[node name="TitleLabel" type="Label" parent="CanvasLayer"]
+offset_left = 400.0
+offset_top = 16.0
+offset_right = 500.0
+offset_bottom = 48.0
+text = "装备系统"
+horizontal_alignment = 2
+
+[node name="WeaponSlot" type="Button" parent="CanvasLayer"]
+offset_left = 100.0
+offset_top = 80.0
+offset_right = 200.0
+offset_bottom = 120.0
+text = "⚔ 武器槽"
+
+[node name="ArmorSlot" type="Button" parent="CanvasLayer"]
+offset_left = 220.0
+offset_top = 80.0
+offset_right = 320.0
+offset_bottom = 120.0
+text = "🛡 防具槽"
+
+[node name="AccessorySlot" type="Button" parent="CanvasLayer"]
+offset_left = 340.0
+offset_top = 80.0
+offset_right = 440.0
+offset_bottom = 120.0
+text = "💍 饰品槽"
+
+[node name="DescriptionLabel" type="RichTextLabel" parent="CanvasLayer"]
+offset_left = 100.0
+offset_top = 150.0
+offset_right = 600.0
+offset_bottom = 400.0
+text = "点击装备槽来装备物品"
+
+[node name="GoldLabel" type="Label" parent="CanvasLayer"]
+offset_left = 700.0
+offset_top = 16.0
+offset_right = 850.0
+offset_bottom = 48.0
+text = "金币: 0"
+horizontal_alignment = 2

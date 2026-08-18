@@ -1,0 +1,64 @@
+[gd_scene format=3 uid="uid://doy6addc5uvfo"]
+
+[ext_resource type="Script" uid="uid://b0oi26jclf74s" path="res://BattleScene.gd" id="1_1nbr8"]
+[ext_resource type="Script" uid="uid://cqaqvt2or417y" path="res://Player.gd" id="2_ccrdw"]
+[ext_resource type="Script" uid="uid://s2d5fljnjako" path="res://Enemy.gd" id="3_07qfy"]
+[ext_resource type="Texture2D" uid="uid://b024de62ahddx" path="res://textures/动漫风格深海龙女 (11).png" id="4_1nbr8"]
+
+[node name="BattleScene" type="Node2D" unique_id=1419339968]
+script = ExtResource("1_1nbr8")
+
+[node name="Player" type="Node2D" parent="." unique_id=450227827]
+script = ExtResource("2_ccrdw")
+
+[node name="Enemy" type="Node2D" parent="." unique_id=2070755687]
+script = ExtResource("3_07qfy")
+
+[node name="Background" type="Sprite2D" parent="." unique_id=961286530]
+position = Vector2(796.2779, 412.57654)
+scale = Vector2(0.5587936, 0.51177937)
+texture = ExtResource("4_1nbr8")
+
+[node name="TextureRect" type="TextureRect" parent="." unique_id=2093961168]
+custom_minimum_size = Vector2(0, 1)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 41.999996
+offset_top = 7.9999995
+offset_right = 53.249996
+offset_bottom = 14.249998
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.8, 0.8)
+pivot_offset = Vector2(0.8, 0)
+stretch_mode = 2
+
+[node name="UILayer" type="CanvasLayer" parent="." unique_id=1319118190]
+
+[node name="FleeButton" type="Button" parent="UILayer" unique_id=1971046934]
+offset_left = 22.0
+offset_top = 400.0
+offset_right = 116.0
+offset_bottom = 468.0
+text = "逃跑"
+
+[node name="BattleLog" type="Label" parent="UILayer" unique_id=652334390]
+offset_left = 50.0
+offset_top = 50.0
+offset_right = 334.0
+offset_bottom = 82.0
+
+[node name="AttackButton" type="Button" parent="UILayer" unique_id=510387677]
+offset_left = 225.0
+offset_top = 594.0
+offset_right = 336.0
+offset_bottom = 660.0
+text = "攻击"
+
+[node name="DefendButton" type="Button" parent="UILayer" unique_id=1351850347]
+offset_left = 505.0
+offset_top = 593.0
+offset_right = 614.0
+offset_bottom = 657.0
+text = "防御"
