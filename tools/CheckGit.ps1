@@ -203,7 +203,28 @@ $godotCmd = Get-Command godot -ErrorAction SilentlyContinue
 if (-not $godotCmd) { $godotCmd = Get-Command godot4 -ErrorAction SilentlyContinue }
 if (-not $godotCmd) { $godotCmd = Get-Command Godot_v4 -ErrorAction SilentlyContinue }
 
-if ($godotCmd) {
+# Also scan PATH directories for Godot_v4*.exe pattern (handles versioned filenames)
+if (-not $godotCmd) {
+    $pathDirs = $env:PATH -split ';'
+    foreach ($dir in $pathDirs) {
+        if ($dir -and (Test-Path $dir)) {
+            $found = Get-ChildItem -Path $dir -Filter "Godot_v4*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+                $godotCmd = Get-Item $found.FullName  # Use Get-Item to get full path
+                $godotPath = $found.FullName
+                $godotInstalled = $true
+                try {
+                    $godotVersion = (& $godotPath --version 2>&1).ToString()
+                } catch {
+                    $godotVersion = "4.x (已检测到)"
+                }
+                break
+            }
+        }
+    }
+}
+
+if ($godotCmd -and -not $godotInstalled) {
     $godotPath = $godotCmd.Source
     $godotInstalled = $true
     try {
@@ -211,6 +232,9 @@ if ($godotCmd) {
     } catch {
         $godotVersion = "4.x (已安装)"
     }
+}
+
+if ($godotInstalled) {
     Write-Host "[OK] Godot 已安装" -ForegroundColor Green
     Write-Host "     版本: $godotVersion" -ForegroundColor White
     Write-Host "     路径: $godotPath" -ForegroundColor White
