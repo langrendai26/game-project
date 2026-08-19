@@ -1,10 +1,10 @@
 #requires -Version 5.0
 <#
 .SYNOPSIS
-    三界模拟器 - Git 环境一键检查与项目拉取脚本
+    三界模拟器 - Git + Godot 环境一键检查与项目拉取脚本
 .DESCRIPTION
-    自动检查 Git 安装状态，处理执行策略，支持 winget/choco/手动安装，
-    并可一键克隆项目到本地。
+    自动检查 Git 和 Godot 安装状态，处理执行策略，支持 winget/choco/手动安装，
+    并可一键克隆项目到本地，克隆后可直接用 Godot 打开。
 .USAGE
     配合 启动器.bat 双击运行，或：
     powershell -ExecutionPolicy Bypass -File CheckGit.ps1
@@ -46,7 +46,7 @@ Write-Host ""
 # ============================================================
 # 1. 检查 Git 是否已安装
 # ============================================================
-Write-Host "[1/4] 检查 Git 安装状态..." -ForegroundColor Cyan
+Write-Host "[1/5] 检查 Git 安装状态..." -ForegroundColor Cyan
 
 $gitCmd = Get-Command git -ErrorAction SilentlyContinue
 $gitInstalled = $false
@@ -108,7 +108,7 @@ if ($gitCmd) {
 # ============================================================
 if (-not $gitInstalled) {
     Write-Host ""
-    Write-Host "[2/4] Git 未安装，请选择安装方式：" -ForegroundColor Cyan
+    Write-Host "[2/5] Git 未安装，请选择安装方式：" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  [1] winget 一键安装 (Windows 10/11 自带，推荐)" -ForegroundColor White
     Write-Host "  [2] 官网下载安装包 (最可靠，双击安装)" -ForegroundColor White
@@ -192,9 +192,154 @@ if (-not $gitInstalled) {
 }
 
 # ============================================================
-# 3. 检查 Git 用户配置
+# 3. 检查 Godot 安装状态
 # ============================================================
-Write-Host "[2/4] 检查 Git 用户配置..." -ForegroundColor Cyan
+Write-Host "[2/5] 检查 Godot 安装状态..." -ForegroundColor Cyan
+
+$godotInstalled = $false
+$godotPath = $null
+$godotVersion = $null
+$godotCmd = Get-Command godot -ErrorAction SilentlyContinue
+if (-not $godotCmd) { $godotCmd = Get-Command godot4 -ErrorAction SilentlyContinue }
+if (-not $godotCmd) { $godotCmd = Get-Command Godot_v4 -ErrorAction SilentlyContinue }
+
+if ($godotCmd) {
+    $godotPath = $godotCmd.Source
+    $godotInstalled = $true
+    try {
+        $godotVersion = (& $godotCmd.Source --version 2>&1).ToString()
+    } catch {
+        $godotVersion = "4.x (已安装)"
+    }
+    Write-Host "[OK] Godot 已安装" -ForegroundColor Green
+    Write-Host "     版本: $godotVersion" -ForegroundColor White
+    Write-Host "     路径: $godotPath" -ForegroundColor White
+} else {
+    # 扫描常见安装路径
+    $godotSearchPaths = @(
+        "${env:ProgramFiles}\Godot\Godot.exe",
+        "${env:ProgramFiles}\Godot_v4-stable-win64\Godot_v4-stable-win64.exe",
+        "${env:ProgramFiles}\Godot_v4.3-stable-win64\Godot_v4.3-stable-win64.exe",
+        "${env:ProgramFiles(x86)}\Godot\Godot.exe",
+        "${env:LOCALAPPDATA}\Programs\Godot\Godot.exe",
+        "${env:USERPROFILE}\Desktop\Godot_v4-stable-win64.exe",
+        "${env:USERPROFILE}\Downloads\Godot_v4-stable-win64.exe",
+        "${env:USERPROFILE}\Godot\Godot.exe",
+        "C:\Godot\Godot.exe",
+        "D:\Godot\Godot.exe"
+    )
+
+    # 也查找桌面/下载目录中的 Godot 压缩包解压目录
+    $searchDirs = @(
+        "${env:USERPROFILE}\Desktop",
+        "${env:USERPROFILE}\Downloads",
+        "${env:USERPROFILE}\Documents",
+        "${env:LOCALAPPDATA}\Programs"
+    )
+
+    foreach ($dir in $searchDirs) {
+        if (Test-Path $dir) {
+            $found = Get-ChildItem -Path $dir -Filter "Godot*.exe" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+                $godotSearchPaths += $found.FullName
+                break
+            }
+        }
+    }
+
+    # 查找 .zip 解压后的 Godot 目录
+    foreach ($dir in $searchDirs) {
+        if (Test-Path $dir) {
+            $foundDir = Get-ChildItem -Path $dir -Directory -Filter "Godot*" -Depth 1 -ErrorAction SilentlyContinue | Where-Object {
+                Test-Path (Join-Path $_.FullName "Godot*.exe")
+            } | Select-Object -First 1
+            if ($foundDir) {
+                $exe = Get-ChildItem -Path $foundDir.FullName -Filter "Godot*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($exe) {
+                    $godotSearchPaths += $exe.FullName
+                }
+                break
+            }
+        }
+    }
+
+    $foundGodot = $null
+    foreach ($p in $godotSearchPaths | Select-Object -Unique) {
+        if ($p -and (Test-Path $p)) {
+            $foundGodot = $p
+            break
+        }
+    }
+
+    if ($foundGodot) {
+        $godotPath = $foundGodot
+        $godotInstalled = $true
+        try {
+            $godotVersion = (& $godotPath --version 2>&1).ToString()
+        } catch {
+            $godotVersion = "4.x (已检测到)"
+        }
+        Write-Host "[发现] Godot 已找到: $godotPath" -ForegroundColor Yellow
+        Write-Host "     版本: $godotVersion" -ForegroundColor White
+        Write-Host "     建议添加到系统 PATH 方便全局调用" -ForegroundColor Magenta
+    } else {
+        Write-Host "[X] 未检测到 Godot 引擎" -ForegroundColor Red
+        Write-Host "     运行《三界模拟器》需要 Godot 4.x 引擎" -ForegroundColor White
+        Write-Host ""
+
+        $downloadNow = Read-Host "     是否现在下载 Godot? (Y/N)"
+        if ($downloadNow -eq 'Y' -or $downloadNow -eq 'y') {
+            Write-Host ""
+            Write-Host "  [1] 打开 Godot 官网下载页（推荐）" -ForegroundColor White
+            Write-Host "  [2] winget 一键安装" -ForegroundColor White
+            Write-Host "  [3] chocolatey 安装" -ForegroundColor White
+            Write-Host "  [Q] 稍后再装" -ForegroundColor White
+            Write-Host ""
+            $godotChoice = Read-Host "  请选择"
+
+            switch ($godotChoice) {
+                '1' {
+                    Start-Process "https://godotengine.org/download/windows"
+                    Write-Host ""
+                    Write-Host "  [下载] 已打开 Godot 下载页" -ForegroundColor Green
+                    Write-Host "  建议下载 Godot 4.3 或更新版本 (Standard 版本即可)" -ForegroundColor Yellow
+                    Write-Host "  下载后解压到任意目录（如 C:\Godot\）" -ForegroundColor Yellow
+                    Write-Host "  然后重新打开 启动器.bat" -ForegroundColor Yellow
+                }
+                '2' {
+                    $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+                    if ($wingetCmd) {
+                        try {
+                            winget install GodotEngine.GodotEngine --accept-source-agreements --accept-package-agreements
+                            Write-Host "[完成] Godot 安装完成！请重新打开 启动器.bat" -ForegroundColor Green
+                        } catch {
+                            Write-Host "[X] winget 安装失败，请改用方式 [1]" -ForegroundColor Red
+                        }
+                    } else {
+                        Write-Host "[X] winget 不可用，请改用方式 [1]" -ForegroundColor Red
+                    }
+                }
+                '3' {
+                    try {
+                        choco install godot -y
+                        Write-Host "[完成] Godot 安装完成！请重新打开 启动器.bat" -ForegroundColor Green
+                    } catch {
+                        Write-Host "[X] chocolatey 不可用，请改用方式 [1]" -ForegroundColor Red
+                    }
+                }
+                default {
+                    Write-Host "  已跳过。请稍后从 https://godotengine.org/download 下载" -ForegroundColor Gray
+                }
+            }
+            Write-Host ""
+        }
+    }
+}
+
+# ============================================================
+# 4. 检查 Git 用户配置
+# ============================================================
+Write-Host "[3/5] 检查 Git 用户配置..." -ForegroundColor Cyan
 
 $userName = git config --global user.name 2>$null
 $userEmail = git config --global user.email 2>$null
@@ -216,9 +361,9 @@ if (-not $userName -or -not $userEmail) {
 }
 
 # ============================================================
-# 4. 克隆项目
+# 5. 克隆项目
 # ============================================================
-Write-Host "[3/4] 准备克隆项目..." -ForegroundColor Cyan
+Write-Host "[4/5] 准备克隆项目..." -ForegroundColor Cyan
 
 $repoUrl = "https://github.com/langrendai26/game-project.git"
 $repoName = "game-project"
@@ -261,7 +406,7 @@ if (Test-Path $targetDir) {
 
 # 执行克隆
 Write-Host ""
-Write-Host "[4/4] 正在克隆项目..." -ForegroundColor Cyan
+Write-Host "[5/5] 正在克隆项目..." -ForegroundColor Cyan
 Write-Host "      克隆地址: $repoUrl" -ForegroundColor White
 Write-Host "      保存到: $targetDir" -ForegroundColor White
 Write-Host ""
@@ -277,11 +422,28 @@ try {
         Write-Host "  [成功] 项目已克隆到: $targetDir" -ForegroundColor Green
         Write-Host "========================================" -ForegroundColor Green
         Write-Host ""
-        Write-Host "下一步：" -ForegroundColor Cyan
-        Write-Host "  1. 打开 Godot 4.x" -ForegroundColor White
-        Write-Host "  2. 点击 导入 / Import" -ForegroundColor White
-        Write-Host "  3. 选择 $targetDir\project.godot" -ForegroundColor White
-        Write-Host "  4. 开始游戏开发！" -ForegroundColor White
+
+        # Godot 安装状态总结与自动打开
+        if ($godotInstalled -and $godotPath) {
+            $openNow = Read-Host "是否现在用 Godot 打开项目? (Y/N)"
+            if ($openNow -eq 'Y' -or $openNow -eq 'y') {
+                Write-Host "  正在启动 Godot..." -ForegroundColor Yellow
+                Start-Process -FilePath $godotPath -ArgumentList "--path", "`"$targetDir`""
+                Write-Host "  已启动 Godot，项目应自动加载" -ForegroundColor Green
+            } else {
+                Write-Host ""
+                Write-Host "  后续打开方式：" -ForegroundColor Cyan
+                Write-Host "    1. 直接双击: $targetDir\project.godot" -ForegroundColor White
+                Write-Host "    2. 或启动 Godot 后点击 Import 选择 project.godot" -ForegroundColor White
+                Write-Host "    3. 命令行: $godotPath --path `"$targetDir`"" -ForegroundColor White
+            }
+        } else {
+            Write-Host "下一步：" -ForegroundColor Cyan
+            Write-Host "  1. 安装 Godot 4.x（从 https://godotengine.org/download 下载）" -ForegroundColor White
+            Write-Host "  2. 打开 Godot，点击 Import" -ForegroundColor White
+            Write-Host "  3. 选择 $targetDir\project.godot" -ForegroundColor White
+            Write-Host "  4. 开始游戏开发！" -ForegroundColor White
+        }
     } else {
         Write-Host "[X] 克隆失败，目标目录未创建" -ForegroundColor Red
     }
