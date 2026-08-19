@@ -196,41 +196,97 @@ if (-not $gitInstalled) {
 # ============================================================
 Write-Host "[2/5] 检查 Godot 安装状态..." -ForegroundColor Cyan
 
+# Logging infrastructure
+$godotLog = @()
+$godotLogFile = Join-Path $env:TEMP "godot_detection_log_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+
+function Add-GodotLog {
+    param([string]$Message)
+    $timestamp = Get-Date -Format "HH:mm:ss.fff"
+    $entry = "[$timestamp] $Message"
+    $script:godotLog += $entry
+    Write-Host "  [LOG] $Message" -ForegroundColor DarkGray
+}
+
+Add-GodotLog "=== Godot Detection Started ==="
+Add-GodotLog "OS: $([System.Environment]::OSVersion.VersionString)"
+Add-GodotLog "PowerShell: $($PSVersionTable.PSVersion)"
+Add-GodotLog "PATH length: $($env:PATH.Length) chars"
+
 $godotInstalled = $false
 $godotPath = $null
 $godotVersion = $null
-$godotCmd = Get-Command godot -ErrorAction SilentlyContinue
-if (-not $godotCmd) { $godotCmd = Get-Command godot4 -ErrorAction SilentlyContinue }
-if (-not $godotCmd) { $godotCmd = Get-Command Godot_v4 -ErrorAction SilentlyContinue }
+$detectionFailedReason = @()
 
-# Also scan PATH directories for Godot_v4*.exe pattern (handles versioned filenames)
+# --- Step 1: Check via Get-Command (exact names) ---
+Add-GodotLog "Step 1: Get-Command exact name lookup..."
+$godotCmd = Get-Command godot -ErrorAction SilentlyContinue
+if ($godotCmd) {
+    Add-GodotLog "  Found 'godot' at: $($godotCmd.Source)"
+} else {
+    Add-GodotLog "  'godot' not found in command cache"
+}
+
 if (-not $godotCmd) {
-    $pathDirs = $env:PATH -split ';'
-    foreach ($dir in $pathDirs) {
-        if ($dir -and (Test-Path $dir)) {
-            $found = Get-ChildItem -Path $dir -Filter "Godot_v4*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($found) {
-                $godotCmd = Get-Item $found.FullName  # Use Get-Item to get full path
-                $godotPath = $found.FullName
-                $godotInstalled = $true
-                try {
-                    $godotVersion = (& $godotPath --version 2>&1).ToString()
-                } catch {
-                    $godotVersion = "4.x (已检测到)"
-                }
-                break
-            }
-        }
+    $godotCmd = Get-Command godot4 -ErrorAction SilentlyContinue
+    if ($godotCmd) {
+        Add-GodotLog "  Found 'godot4' at: $($godotCmd.Source)"
+    } else {
+        Add-GodotLog "  'godot4' not found in command cache"
     }
 }
 
+if (-not $godotCmd) {
+    $godotCmd = Get-Command Godot_v4 -ErrorAction SilentlyContinue
+    if ($godotCmd) {
+        Add-GodotLog "  Found 'Godot_v4' at: $($godotCmd.Source)"
+    } else {
+        Add-GodotLog "  'Godot_v4' not found in command cache"
+        $detectionFailedReason += "Get-Command 精确匹配未找到 godot/godot4/Godot_v4"
+    }
+}
+
+# --- Step 2: Scan PATH directories with wildcard ---
+Add-GodotLog "Step 2: PATH directory wildcard scan for Godot_v4*.exe..."
+if (-not $godotCmd) {
+    $pathDirs = $env:PATH -split ';'
+    $pathScanHit = $false
+    $dirsChecked = 0
+    foreach ($dir in $pathDirs) {
+        if ($dir -and (Test-Path $dir)) {
+            $dirsChecked++
+            try {
+                $found = Get-ChildItem -Path $dir -Filter "Godot_v4*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($found) {
+                    Add-GodotLog "  FOUND in PATH dir '$dir': $($found.FullName)"
+                    $godotCmd = Get-Item $found.FullName
+                    $godotPath = $found.FullName
+                    $godotInstalled = $true
+                    $pathScanHit = $true
+                    break
+                }
+            } catch {
+                Add-GodotLog "  Error scanning '$dir': $_"
+            }
+        }
+    }
+    Add-GodotLog "  Scanned $dirsChecked PATH directories with wildcard (Godot_v4*.exe)"
+    if (-not $pathScanHit) {
+        $detectionFailedReason += "PATH 通配符扫描 (Godot_v4*.exe) 在 $dirsChecked 个目录中未找到匹配文件"
+        Add-GodotLog "  No Godot_v4*.exe found in any PATH directory"
+    }
+}
+
+# --- Step 3: Handle Get-Command result ---
 if ($godotCmd -and -not $godotInstalled) {
     $godotPath = $godotCmd.Source
     $godotInstalled = $true
     try {
         $godotVersion = (& $godotCmd.Source --version 2>&1).ToString()
+        Add-GodotLog "  Version from command: $godotVersion"
     } catch {
         $godotVersion = "4.x (已安装)"
+        Add-GodotLog "  Version query failed, using fallback: $godotVersion"
     }
 }
 
@@ -238,8 +294,18 @@ if ($godotInstalled) {
     Write-Host "[OK] Godot 已安装" -ForegroundColor Green
     Write-Host "     版本: $godotVersion" -ForegroundColor White
     Write-Host "     路径: $godotPath" -ForegroundColor White
+    Add-GodotLog "RESULT: Godot INSTALLED - path=$godotPath version=$godotVersion"
+    # Write log file for installed case
+    try {
+        $godotLog | Out-File -FilePath $godotLogFile -Encoding UTF8 -Force
+        Write-Host "  [日志] 检测日志已保存: $godotLogFile" -ForegroundColor Magenta
+    } catch { }
 } else {
-    # 扫描常见安装路径
+    Add-GodotLog "RESULT: Godot NOT found via PATH/PATH-wildcard, starting deep scan..."
+    $detectionFailedReason += "PATH 命令查找和通配符扫描均未找到 Godot"
+
+    # --- Step 4: Scan common installation paths ---
+    Add-GodotLog "Step 3: Deep scan of common installation paths..."
     $godotSearchPaths = @(
         "${env:ProgramFiles}\Godot\Godot.exe",
         "${env:ProgramFiles}\Godot_v4-stable-win64\Godot_v4-stable-win64.exe",
@@ -253,7 +319,22 @@ if ($godotInstalled) {
         "D:\Godot\Godot.exe"
     )
 
-    # 也查找桌面/下载目录中的 Godot 压缩包解压目录
+    # Log existence of each preset path
+    $presetFound = 0
+    foreach ($p in $godotSearchPaths) {
+        if (Test-Path $p) {
+            Add-GodotLog "  [EXISTS] $p"
+            $presetFound++
+        } else {
+            Add-GodotLog "  [NOT FOUND] $p"
+        }
+    }
+    if ($presetFound -eq 0) {
+        $detectionFailedReason += "10 个预设安装路径均不存在 Godot 可执行文件"
+    }
+
+    # --- Step 5: Recursive search in user directories ---
+    Add-GodotLog "Step 4: Recursive search in user directories (Desktop/Downloads/Documents/AppData)..."
     $searchDirs = @(
         "${env:USERPROFILE}\Desktop",
         "${env:USERPROFILE}\Downloads",
@@ -261,36 +342,64 @@ if ($godotInstalled) {
         "${env:LOCALAPPDATA}\Programs"
     )
 
+    $recursiveFound = 0
     foreach ($dir in $searchDirs) {
         if (Test-Path $dir) {
-            $found = Get-ChildItem -Path $dir -Filter "Godot*.exe" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($found) {
-                $godotSearchPaths += $found.FullName
-                break
-            }
-        }
-    }
-
-    # 查找 .zip 解压后的 Godot 目录
-    foreach ($dir in $searchDirs) {
-        if (Test-Path $dir) {
-            $foundDir = Get-ChildItem -Path $dir -Directory -Filter "Godot*" -Depth 1 -ErrorAction SilentlyContinue | Where-Object {
-                Test-Path (Join-Path $_.FullName "Godot*.exe")
-            } | Select-Object -First 1
-            if ($foundDir) {
-                $exe = Get-ChildItem -Path $foundDir.FullName -Filter "Godot*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($exe) {
-                    $godotSearchPaths += $exe.FullName
+            try {
+                $found = Get-ChildItem -Path $dir -Filter "Godot*.exe" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($found) {
+                    Add-GodotLog "  FOUND via recursive search: $($found.FullName)"
+                    $godotSearchPaths += $found.FullName
+                    $recursiveFound++
+                } else {
+                    Add-GodotLog "  No Godot*.exe found in '$dir' (depth=2)"
                 }
-                break
+            } catch {
+                Add-GodotLog "  Error scanning '$dir': $_"
+            }
+        } else {
+            Add-GodotLog "  Directory does not exist: $dir"
+        }
+    }
+    if ($recursiveFound -eq 0) {
+        $detectionFailedReason += "4 个用户目录递归搜索 (depth=2) 未找到 Godot*.exe"
+    }
+
+    # --- Step 6: Search extracted directories ---
+    Add-GodotLog "Step 5: Search for extracted Godot directories (Godot*/Godot*.exe)..."
+    $extractFound = $false
+    foreach ($dir in $searchDirs) {
+        if (Test-Path $dir) {
+            try {
+                $foundDir = Get-ChildItem -Path $dir -Directory -Filter "Godot*" -Depth 1 -ErrorAction SilentlyContinue | Where-Object {
+                    Test-Path (Join-Path $_.FullName "Godot*.exe")
+                } | Select-Object -First 1
+                if ($foundDir) {
+                    $exe = Get-ChildItem -Path $foundDir.FullName -Filter "Godot*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+                    if ($exe) {
+                        $godotSearchPaths += $exe.FullName
+                        $extractFound = $true
+                        Add-GodotLog "  FOUND in extracted dir: $($exe.FullName)"
+                    }
+                } else {
+                    Add-GodotLog "  No Godot* directory with Godot*.exe in '$dir'"
+                }
+            } catch {
+                Add-GodotLog "  Error scanning '$dir': $_"
             }
         }
     }
+    if (-not $extractFound) {
+        $detectionFailedReason += "解压目录搜索未找到 Godot 可执行文件"
+    }
 
+    # --- Step 7: Final check on all collected paths ---
+    Add-GodotLog "Step 6: Final verification of $($godotSearchPaths.Count) candidate paths..."
     $foundGodot = $null
-    foreach ($p in $godotSearchPaths | Select-Object -Unique) {
+    foreach ($p in ($godotSearchPaths | Select-Object -Unique)) {
         if ($p -and (Test-Path $p)) {
             $foundGodot = $p
+            Add-GodotLog "  FINAL MATCH: $p"
             break
         }
     }
@@ -300,18 +409,78 @@ if ($godotInstalled) {
         $godotInstalled = $true
         try {
             $godotVersion = (& $godotPath --version 2>&1).ToString()
+            Add-GodotLog "  Version from final match: $godotVersion"
         } catch {
             $godotVersion = "4.x (已检测到)"
+            Add-GodotLog "  Version query failed, using fallback: $godotVersion"
         }
         Write-Host "[发现] Godot 已找到: $godotPath" -ForegroundColor Yellow
         Write-Host "     版本: $godotVersion" -ForegroundColor White
         Write-Host "     建议添加到系统 PATH 方便全局调用" -ForegroundColor Magenta
+        Add-GodotLog "RESULT: Godot FOUND via deep scan - path=$godotPath"
     } else {
         Write-Host "[X] 未检测到 Godot 引擎" -ForegroundColor Red
         Write-Host "     运行《三界模拟器》需要 Godot 4.x 引擎" -ForegroundColor White
+
+        # Print detailed failure reasons
+        Write-Host ""
+        Write-Host "  --- 诊断信息 ---" -ForegroundColor Yellow
+        Add-GodotLog "RESULT: Godot NOT FOUND anywhere"
+        Add-GodotLog "Failure reasons:"
+        foreach ($reason in $detectionFailedReason) {
+            Write-Host "    - $reason" -ForegroundColor Red
+            Add-GodotLog "  REASON: $reason"
+        }
+
+        # PATH diagnostics
+        $pathDirCount = ($env:PATH -split ';').Count
+        $validPathDirs = 0
+        foreach ($d in ($env:PATH -split ';')) {
+            if ($d -and (Test-Path $d)) { $validPathDirs++ }
+        }
+        $pathDiagnostic = "PATH: $pathDirCount entries total, $validPathDirs valid directories"
+        Write-Host "    $pathDiagnostic" -ForegroundColor Gray
+        Add-GodotLog "  PATH DIAGNOSTIC: $pathDiagnostic"
+
+        $godotExeInPath = Get-Command godot -ErrorAction SilentlyContinue
+        if ($godotExeInPath) {
+            Write-Host "    [NOTE] 'godot' command exists at $($godotExeInPath.Source) but was not matched" -ForegroundColor Yellow
+            Add-GodotLog "  NOTE: 'godot' command exists at $($godotExeInPath.Source)"
+        }
+
+        # Check if any Godot-related files exist on the system
+        $allDrives = Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue
+        Write-Host "    扫描驱动器: $($allDrives.Root -join ', ')" -ForegroundColor Gray
+        Add-GodotLog "  Drives: $($allDrives.Root -join ', ')"
+
+        # Log Program Files contents for debugging
+        $pfGodotDirs = Get-ChildItem -Path "${env:ProgramFiles}" -Filter "Godot*" -Directory -ErrorAction SilentlyContinue
+        if ($pfGodotDirs) {
+            Write-Host "    [NOTE] Found Godot-related dirs in Program Files:" -ForegroundColor Yellow
+            foreach ($d in $pfGodotDirs) {
+                Write-Host "      $($d.FullName)" -ForegroundColor Yellow
+                Add-GodotLog "  NOTE: Godot dir in Program Files: $($d.FullName)"
+            }
+        }
+
+        Write-Host ""
+        Write-Host "  --- 建议 ---" -ForegroundColor Yellow
+        Write-Host "    1. 下载 Godot: https://godotengine.org/download/windows" -ForegroundColor White
+        Write-Host "    2. 解压到 C:\Godot\ 或 D:\Godot\" -ForegroundColor White
+        Write-Host "    3. 将 Godot 目录添加到系统 PATH" -ForegroundColor White
+        Write-Host "    4. 重新运行启动器" -ForegroundColor White
         Write-Host ""
 
-        $downloadNow = Read-Host "     是否现在下载 Godot? (Y/N)"
+        # Write log file
+        try {
+            $godotLog | Out-File -FilePath $godotLogFile -Encoding UTF8 -Force
+            Write-Host "  [日志] 检测日志已保存: $godotLogFile" -ForegroundColor Magenta
+            Add-GodotLog "Log saved to: $godotLogFile"
+        } catch {
+            Write-Host "  [警告] 无法写入日志文件: $_" -ForegroundColor Yellow
+        }
+
+        $downloadNow = Read-Host "  是否现在下载 Godot? (Y/N)"
         if ($downloadNow -eq 'Y' -or $downloadNow -eq 'y') {
             Write-Host ""
             Write-Host "  [1] 打开 Godot 官网下载页（推荐）" -ForegroundColor White
@@ -358,7 +527,6 @@ if ($godotInstalled) {
             Write-Host ""
         }
     }
-}
 
 # ============================================================
 # 4. 检查 Git 用户配置
