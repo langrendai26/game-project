@@ -379,6 +379,88 @@ try {
 }
 
 # ============================================================
+# 2.5 Git version requirement check
+# ============================================================
+if ($gitInstalled -and $gitVersion -and $gitVersion -ne "unknown") {
+    Write-Host ""
+    Add-GitLog "Step 5: Git version requirement check..."
+
+    # Minimum required Git version
+    $minGitVersionStr = "2.0.0"
+    Write-Host "[版本] 检查 Git 版本要求（最低 $minGitVersionStr）..." -ForegroundColor Cyan
+
+    # Parse version from string like "git version 2.47.1.windows.1"
+    if ($gitVersion -match 'version\s+(\d+)\.(\d+)\.(\d+)') {
+        $verMajor = [int]$Matches[1]
+        $verMinor = [int]$Matches[2]
+        $verPatch = [int]$Matches[3]
+        $verParsed = [version]"$verMajor.$verMinor.$verPatch"
+
+        $minVerParsed = [version]$minGitVersionStr
+        $versionOk = $verParsed -ge $minVerParsed
+
+        Add-GitLog "  Parsed version: $verMajor.$verMinor.$verPatch"
+        Add-GitLog "  Min required: $minGitVersionStr"
+        Add-GitLog "  Version OK: $versionOk"
+
+        if ($versionOk) {
+            Write-Host "[OK] Git 版本满足要求: $verMajor.$verMinor.$verPatch >= $minGitVersionStr" -ForegroundColor Green
+            Add-GitLog "RESULT: Git version check PASSED"
+        } else {
+            Write-Host "[警告] Git 版本过低: $verMajor.$verMinor.$verPatch < $minGitVersionStr" -ForegroundColor Yellow
+            Write-Host "       建议升级到 Git 2.0 或更高版本" -ForegroundColor Yellow
+            Add-GitLog "RESULT: Git version check FAILED - too old"
+            Add-GitLog "  Upgrade guidance offered"
+
+            $upgradeNow = Read-Host "       是否现在升级 Git? (Y/N，留空=跳过)"
+            if ($upgradeNow -eq 'Y' -or $upgradeNow -eq 'y') {
+                Write-Host ""
+                Write-Host "  [1] winget upgrade Git.Git" -ForegroundColor White
+                Write-Host "  [2] 官网下载最新版: https://git-scm.com/download/win" -ForegroundColor White
+                Write-Host "  [3] chocolatey upgrade git" -ForegroundColor White
+                Write-Host "  [Q] 稍后再升" -ForegroundColor White
+                Write-Host ""
+                $upgradeChoice = Read-Host "  请选择"
+                switch ($upgradeChoice) {
+                    '1' {
+                        $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+                        if ($wingetCmd) {
+                            try {
+                                winget upgrade Git.Git --accept-source-agreements --accept-package-agreements
+                                Write-Host "[完成] Git 升级完成！请重启终端" -ForegroundColor Green
+                            } catch {
+                                Write-Host "[X] 升级失败，请改用方式 [2]" -ForegroundColor Red
+                            }
+                        } else {
+                            Write-Host "[X] winget 不可用，请改用方式 [2]" -ForegroundColor Red
+                        }
+                    }
+                    '2' {
+                        Start-Process "https://git-scm.com/download/win"
+                        Write-Host "[下载] 已打开 Git 下载页，请下载安装最新版" -ForegroundColor Green
+                    }
+                    '3' {
+                        try {
+                            choco upgrade git -y
+                            Write-Host "[完成] Git 升级完成！请重启终端" -ForegroundColor Green
+                        } catch {
+                            Write-Host "[X] chocolatey 不可用，请改用方式 [2]" -ForegroundColor Red
+                        }
+                    }
+                    default {
+                        Write-Host "  已跳过升级。请从 https://git-scm.com/download 下载最新版" -ForegroundColor Gray
+                    }
+                }
+            }
+        }
+    } else {
+        Write-Host "[警告] 无法解析 Git 版本号: $gitVersion" -ForegroundColor Yellow
+        Write-Host "       建议手动确认版本是否 >= $minGitVersionStr" -ForegroundColor Yellow
+        Add-GitLog "RESULT: Git version parse FAILED - format: $gitVersion"
+    }
+}
+
+# ============================================================
 # 3. 检查 Godot 安装状态
 # ============================================================
 Write-Host "[2/5] 检查 Godot 安装状态..." -ForegroundColor Cyan
