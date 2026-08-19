@@ -48,57 +48,187 @@ Write-Host ""
 # ============================================================
 Write-Host "[1/5] 检查 Git 安装状态..." -ForegroundColor Cyan
 
+# Git logging infrastructure
+$gitLog = @()
+$gitLogFile = Join-Path $env:TEMP "git_detection_log_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+
+function Add-GitLog {
+    param([string]$Message)
+    $timestamp = Get-Date -Format "HH:mm:ss.fff"
+    $entry = "[$timestamp] $Message"
+    $script:gitLog += $entry
+    Write-Host "  [LOG] $Message" -ForegroundColor DarkGray
+}
+
+Add-GitLog "=== Git Detection Started ==="
+Add-GitLog "OS: $([System.Environment]::OSVersion.VersionString)"
+Add-GitLog "PowerShell: $($PSVersionTable.PSVersion)"
+Add-GitLog "PATH length: $($env:PATH.Length) chars"
+
 $gitCmd = Get-Command git -ErrorAction SilentlyContinue
 $gitInstalled = $false
+$gitVersion = $null
+$gitPath = $null
+$gitDetectionFailedReason = @()
 
+# --- Step 1: Check via Get-Command ---
+Add-GitLog "Step 1: Get-Command 'git' lookup..."
 if ($gitCmd) {
-    $gitVersion = (& git --version 2>&1)
-    $gitPath    = $gitCmd.Source
+    Add-GitLog "  Found 'git' via Get-Command at: $($gitCmd.Source)"
+} else {
+    Add-GitLog "  'git' not found in command cache"
+    $gitDetectionFailedReason += "Get-Command 未找到 git 命令"
+}
+
+# --- Step 2: Verify Git actually works ---
+if ($gitCmd) {
+    $gitPath = $gitCmd.Source
     $gitInstalled = $true
 
-    Write-Host "[OK] Git 已安装" -ForegroundColor Green
-    Write-Host "     版本: $gitVersion" -ForegroundColor White
-    Write-Host "     路径: $gitPath" -ForegroundColor White
-
-    # 额外检查：git 是否真的能运行
     try {
-        $null = & git rev-parse --is-inside-work-tree 2>&1
-        Write-Host "     状态: 命令可正常执行" -ForegroundColor White
-    } catch {
-        Write-Host "     [警告] git 命令存在但执行异常: $($_.Exception.Message)" -ForegroundColor Yellow
-    }
-} else {
-    Write-Host "[X] 未检测到 git 命令" -ForegroundColor Red
+        $gitVersionLine = & git --version 2>&1
+        $gitVersion = $gitVersionLine.ToString().Trim()
 
-    # 额外检查：是否安装了 git 但未加入 PATH
-    $commonPaths = @(
+        Write-Host "[OK] Git 已安装" -ForegroundColor Green
+        Write-Host "     版本: $gitVersion" -ForegroundColor White
+        Write-Host "     路径: $gitPath" -ForegroundColor White
+        Add-GitLog "  Version: $gitVersion"
+        Add-GitLog "  Path: $gitPath"
+
+        # Verify git can actually run
+        try {
+            $null = & git rev-parse --is-inside-work-tree 2>&1
+            Write-Host "     状态: 命令可正常执行" -ForegroundColor White
+            Add-GitLog "  Status: git command works correctly"
+        } catch {
+            Write-Host "     [警告] git 命令存在但执行异常: $($_.Exception.Message)" -ForegroundColor Yellow
+            Add-GitLog "  WARNING: git command exists but execution failed: $($_.Exception.Message)"
+        }
+    } catch {
+        Write-Host "[OK] Git 已安装" -ForegroundColor Green
+        Write-Host "     版本: 无法获取（$($_.Exception.Message)）" -ForegroundColor Yellow
+        Write-Host "     路径: $gitPath" -ForegroundColor White
+        Add-GitLog "  WARNING: Version query failed: $($_.Exception.Message)"
+        Add-GitLog "  Path: $gitPath"
+        $gitVersion = "unknown"
+    }
+}
+
+# --- Step 3: If not found via PATH, scan common installation paths ---
+if (-not $gitInstalled) {
+    Write-Host "[X] 未检测到 git 命令" -ForegroundColor Red
+    Add-GitLog "Step 2: Deep scan for Git installation paths..."
+
+    $gitSearchPaths = @(
         "${env:ProgramFiles}\Git\cmd\git.exe",
         "${env:ProgramFiles}\Git\bin\git.exe",
         "${env:ProgramFiles(x86)}\Git\cmd\git.exe",
+        "${env:ProgramFiles(x86)}\Git\bin\git.exe",
         "${env:LOCALAPPDATA}\Programs\Git\cmd\git.exe",
-        "${env:USERPROFILE}\scoop\shims\git.exe"
+        "${env:LOCALAPPDATA}\Programs\Git\bin\git.exe",
+        "${env:USERPROFILE}\scoop\shims\git.exe",
+        "${env:USERPROFILE}\scoop\apps\git\current\cmd\git.exe",
+        "${env:ChocolateyInstall}\bin\git.exe",
+        "${env:ChocolateyInstall}\lib\git\tools\cmd\git.exe"
     )
 
     $foundGit = $null
-    foreach ($p in $commonPaths) {
+    $presetFound = 0
+    foreach ($p in $gitSearchPaths) {
         if (Test-Path $p) {
-            $foundGit = $p
-            break
+            Add-GitLog "  [EXISTS] $p"
+            $presetFound++
+            if (-not $foundGit) { $foundGit = $p }
+        } else {
+            Add-GitLog "  [NOT FOUND] $p"
         }
     }
 
+    # Also search registry for Git install location
+    Add-GitLog "Step 3: Check Windows Registry for Git installation..."
+    $regPaths = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
+    $regGitFound = $null
+    foreach ($regPath in $regPaths) {
+        try {
+            $items = Get-ItemProperty $regPath -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*Git*" }
+            if ($items) {
+                foreach ($item in ($items | Select-Object -First 3)) {
+                    Add-GitLog "  Registry found: $($item.DisplayName) at $($item.InstallLocation)"
+                    if (-not $regGitFound -and $item.InstallLocation) {
+                        $candidate = Join-Path $item.InstallLocation "cmd\git.exe"
+                        if (Test-Path $candidate) {
+                            $regGitFound = $candidate
+                            Add-GitLog "  Registry confirmed git at: $regGitFound"
+                        }
+                    }
+                }
+            }
+        } catch {
+            Add-GitLog "  Registry scan error: $($_.Exception.Message)"
+        }
+    }
+
+    # Prioritize registry found or preset found
+    if ($regGitFound) { $foundGit = $regGit }
+    if ($presetFound -eq 0 -and -not $regGitFound) {
+        $gitDetectionFailedReason += "$($gitSearchPaths.Count) 个预设路径和注册表中均未找到 Git"
+    }
+
+    # --- Step 4: Also search PATH directories for git.exe ---
+    Add-GitLog "Step 4: PATH directory scan for git.exe..."
+    $pathDirs = $env:PATH -split ';'
+    $pathHit = $false
+    $dirsChecked = 0
+    foreach ($dir in $pathDirs) {
+        if ($dir -and (Test-Path $dir)) {
+            $dirsChecked++
+            try {
+                $found = Get-ChildItem -Path $dir -Filter "git.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($found) {
+                    Add-GitLog "  FOUND in PATH dir '$dir': $($found.FullName)"
+                    if (-not $foundGit) { $foundGit = $found.FullName }
+                    $pathHit = $true
+                }
+            } catch {
+                Add-GitLog "  Error scanning '$dir': $($_.Exception.Message)"
+            }
+        }
+    }
+    Add-GitLog "  Scanned $dirsChecked PATH directories for git.exe"
+    if (-not $pathHit -and -not $foundGit) {
+        $gitDetectionFailedReason += "PATH 目录扫描 ($dirsChecked 个目录) 未找到 git.exe"
+    }
+
+    # --- Step 5: Try to fix PATH ---
     if ($foundGit) {
         Write-Host "[发现] Git 已安装但未加入 PATH: $foundGit" -ForegroundColor Yellow
+        Add-GitLog "RESULT: Git found via deep scan at $foundGit but not in PATH"
         Write-Host "[修复] 正在将 Git 添加到当前会话的 PATH..." -ForegroundColor Yellow
         $gitDir = Split-Path (Split-Path $foundGit)
         $env:PATH = "$gitDir;$env:PATH"
+        Add-GitLog "  Added $gitDir to session PATH"
+
         $gitCmd = Get-Command git -ErrorAction SilentlyContinue
         if ($gitCmd) {
-            $gitVersion = (& git --version 2>&1)
+            try {
+                $gitVersion = (& git --version 2>&1).ToString().Trim()
+            } catch {
+                $gitVersion = "unknown"
+            }
+            $gitPath = $foundGit
             $gitInstalled = $true
             Write-Host "[OK] 已修复，Git 现在可用了" -ForegroundColor Green
             Write-Host "     版本: $gitVersion" -ForegroundColor White
+            Write-Host "     路径: $gitPath" -ForegroundColor White
             Write-Host "     注意: 请重启终端后再次使用，或永久添加到系统 PATH" -ForegroundColor Magenta
+            Add-GitLog "RESULT: Git INSTALLED after PATH fix - version=$gitVersion"
+        } else {
+            Write-Host "[X] 修复失败，请手动重启终端" -ForegroundColor Red
+            Add-GitLog "  Failed to make git available after PATH fix"
         }
     }
 }
@@ -109,6 +239,54 @@ if ($gitCmd) {
 if (-not $gitInstalled) {
     Write-Host ""
     Write-Host "[2/5] Git 未安装，请选择安装方式：" -ForegroundColor Cyan
+
+    # --- Diagnostics ---
+    Write-Host ""
+    Write-Host "  --- 诊断信息 ---" -ForegroundColor Yellow
+    Add-GitLog "RESULT: Git NOT FOUND anywhere"
+    Add-GitLog "Failure reasons:"
+    foreach ($reason in $gitDetectionFailedReason) {
+        Write-Host "    - $reason" -ForegroundColor Red
+        Add-GitLog "  REASON: $reason"
+    }
+
+    # PATH diagnostics
+    $pathDirCount = ($env:PATH -split ';').Count
+    $validPathDirs = 0
+    foreach ($d in ($env:PATH -split ';')) {
+        if ($d -and (Test-Path $d)) { $validPathDirs++ }
+    }
+    $pathDiagnostic = "PATH: $pathDirCount entries total, $validPathDirs valid directories"
+    Write-Host "    $pathDiagnostic" -ForegroundColor Gray
+    Add-GitLog "  PATH DIAGNOSTIC: $pathDiagnostic"
+
+    # Check if any Git-related files exist on the system
+    $allDrives = Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue
+    Write-Host "    扫描驱动器: $($allDrives.Root -join ', ')" -ForegroundColor Gray
+    Add-GitLog "  Drives: $($allDrives.Root -join ', ')"
+
+    # Log Program Files Git-related dirs
+    $pfGitDirs = Get-ChildItem -Path "${env:ProgramFiles}" -Filter "Git*" -Directory -ErrorAction SilentlyContinue
+    if ($pfGitDirs) {
+        Write-Host "    [NOTE] 发现 Git 相关目录：" -ForegroundColor Yellow
+        foreach ($d in $pfGitDirs) {
+            Write-Host "      $($d.FullName)" -ForegroundColor Yellow
+            Add-GitLog "  NOTE: Git dir in Program Files: $($d.FullName)"
+        }
+    }
+
+    # Log AppData Git-related dirs
+    $appDataGitDirs = Get-ChildItem -Path "${env:LOCALAPPDATA}\Programs" -Filter "Git*" -Directory -ErrorAction SilentlyContinue
+    if ($appDataGitDirs) {
+        Write-Host "    [NOTE] 发现 Git 相关目录：" -ForegroundColor Yellow
+        foreach ($d in $appDataGitDirs) {
+            Write-Host "      $($d.FullName)" -ForegroundColor Yellow
+            Add-GitLog "  NOTE: Git dir in LocalAppData: $($d.FullName)"
+        }
+    }
+
+    Write-Host ""
+    Write-Host "  --- 安装方式 ---" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  [1] winget 一键安装 (Windows 10/11 自带，推荐)" -ForegroundColor White
     Write-Host "  [2] 官网下载安装包 (最可靠，双击安装)" -ForegroundColor White
@@ -189,6 +367,15 @@ if (-not $gitInstalled) {
             return
         }
     }
+}
+
+# Write git detection log file (single write after all Git detection logic)
+try {
+    $gitLog | Out-File -FilePath $gitLogFile -Encoding UTF8 -Force
+    $logNote = if ($gitInstalled) { "Git 已安装" } else { "Git 未安装" }
+    Write-Host "  [日志] Git 检测日志已保存: $gitLogFile ($logNote)" -ForegroundColor Magenta
+} catch {
+    Write-Host "  [警告] 无法写入日志文件: $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
 # ============================================================
