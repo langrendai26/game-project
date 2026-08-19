@@ -384,12 +384,20 @@ try {
 if ($gitInstalled -and $gitVersion -and $gitVersion -ne "unknown") {
     Write-Host ""
     Add-GitLog "Step 5: Git version requirement check..."
+    Add-GitLog "  Input version string: '$gitVersion'"
+    Add-GitLog "  Input string length: $($gitVersion.Length) chars"
 
     # Minimum required Git version
     $minGitVersionStr = "2.0.0"
     Write-Host "[版本] 检查 Git 版本要求（最低 $minGitVersionStr）..." -ForegroundColor Cyan
+    Add-GitLog "  Minimum required version: $minGitVersionStr"
 
     # Parse version from string like "git version 2.47.1.windows.1"
+    # Log the regex match attempt in detail
+    Add-GitLog "  Attempting regex match: 'version\s+(\d+)\.(\d+)\.(\d+)'"
+    Add-GitLog "  Full version string: $gitVersion"
+    Add-GitLog "  Regex target: looking for 'version' keyword followed by 3 number groups"
+
     if ($gitVersion -match 'version\s+(\d+)\.(\d+)\.(\d+)') {
         $verMajor = [int]$Matches[1]
         $verMinor = [int]$Matches[2]
@@ -397,22 +405,71 @@ if ($gitInstalled -and $gitVersion -and $gitVersion -ne "unknown") {
         $verParsed = [version]"$verMajor.$verMinor.$verPatch"
 
         $minVerParsed = [version]$minGitVersionStr
+
+        Add-GitLog "  Regex MATCHED!"
+        Add-GitLog "    Group[1] (major): '$($Matches[1])' -> int=$verMajor"
+        Add-GitLog "    Group[2] (minor): '$($Matches[2])' -> int=$verMinor"
+        Add-GitLog "    Group[3] (patch): '$($Matches[3])' -> int=$verPatch"
+        Add-GitLog "    Parsed version object: $verParsed (type: $($verParsed.GetType().Name))"
+        Add-GitLog "    Min version object: $minVerParsed (type: $($minVerParsed.GetType().Name))"
+
+        # Perform comparison with detailed logging
+        Add-GitLog "  Performing version comparison: $verParsed -ge $minVerParsed"
+
+        # Break down the comparison
+        $majorCompare = $verMajor -ge [int]($minVerParsed.Major)
+        $minorCompare = $verMinor -ge [int]($minVerParsed.Minor)
+        $patchCompare = $verPatch -ge [int]($minVerParsed.Build)
+
+        Add-GitLog "    Major compare: $verMajor >= $($minVerParsed.Major) => $majorCompare"
+        if (-not $majorCompare) {
+            Add-GitLog "      => FAIL: major version too low"
+        } elseif ($verMajor -eq [int]($minVerParsed.Major)) {
+            Add-GitLog "      => Major equal, checking minor..."
+            Add-GitLog "    Minor compare: $verMinor >= $($minVerParsed.Minor) => $minorCompare"
+            if (-not $minorCompare) {
+                Add-GitLog "      => FAIL: minor version too low (major is equal)"
+            } elseif ($verMinor -eq [int]($minVerParsed.Minor)) {
+                Add-GitLog "      => Minor equal, checking patch..."
+                Add-GitLog "    Patch compare: $verPatch >= $($minVerParsed.Build) => $patchCompare"
+                if (-not $patchCompare) {
+                    Add-GitLog "      => FAIL: patch version too low (major.minor equal)"
+                } else {
+                    Add-GitLog "      => All parts equal or greater"
+                }
+            }
+        }
+
         $versionOk = $verParsed -ge $minVerParsed
 
-        Add-GitLog "  Parsed version: $verMajor.$verMinor.$verPatch"
-        Add-GitLog "  Min required: $minGitVersionStr"
-        Add-GitLog "  Version OK: $versionOk"
+        Add-GitLog "  Final version OK (=$verParsed -ge $minVerParsed): $versionOk"
+        Add-GitLog "  Comparison details: [$verMajor.$verMinor.$verPatch] vs [$($minVerParsed.Major).$($minVerParsed.Minor).$($minVerParsed.Build)]"
+
+        # Also test with both -ge and -gt to document the boundary
+        $isBoundary = ($verMajor -eq [int]($minVerParsed.Major) -and
+                       $verMinor -eq [int]($minVerParsed.Minor) -and
+                       $verPatch -eq [int]($minVerParsed.Build))
+        if ($isBoundary) {
+            Add-GitLog "  **BOUNDARY DETECTED**: Version exactly equals minimum ($verMajor.$verMinor.$verPatch == $minGitVersionStr)"
+            Add-GitLog "     -ge operator returns: $versionOk (as expected, >= includes equal)"
+            Add-GitLog "     -gt operator would return: $($verParsed -gt $minVerParsed) (correctly false for boundary)"
+        }
 
         if ($versionOk) {
             Write-Host "[OK] Git 版本满足要求: $verMajor.$verMinor.$verPatch >= $minGitVersionStr" -ForegroundColor Green
             Add-GitLog "RESULT: Git version check PASSED"
+            Add-GitLog "  User-facing message: '[OK] Git $verMajor.$verMinor.$verPatch meets requirement'"
         } else {
             Write-Host "[警告] Git 版本过低: $verMajor.$verMinor.$verPatch < $minGitVersionStr" -ForegroundColor Yellow
             Write-Host "       建议升级到 Git 2.0 或更高版本" -ForegroundColor Yellow
             Add-GitLog "RESULT: Git version check FAILED - too old"
-            Add-GitLog "  Upgrade guidance offered"
+            Add-GitLog "  User-facing message: '[WARNING] Git version too old: $verMajor.$verMinor.$verPatch < $minGitVersionStr'"
+            Add-GitLog "  Upgrade guidance will be offered"
 
             $upgradeNow = Read-Host "       是否现在升级 Git? (Y/N，留空=跳过)"
+            $upgradeDecision = if ($upgradeNow) { $upgradeNow } else { "empty (skip)" }
+            Add-GitLog "  Upgrade decision: $upgradeDecision"
+
             if ($upgradeNow -eq 'Y' -or $upgradeNow -eq 'y') {
                 Write-Host ""
                 Write-Host "  [1] winget upgrade Git.Git" -ForegroundColor White
@@ -421,43 +478,72 @@ if ($gitInstalled -and $gitVersion -and $gitVersion -ne "unknown") {
                 Write-Host "  [Q] 稍后再升" -ForegroundColor White
                 Write-Host ""
                 $upgradeChoice = Read-Host "  请选择"
+                Add-GitLog "  Upgrade method chosen: $upgradeChoice"
+
                 switch ($upgradeChoice) {
                     '1' {
+                        Add-GitLog "  Method 1: winget upgrade Git.Git"
                         $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
                         if ($wingetCmd) {
+                            Add-GitLog "    winget found at: $($wingetCmd.Source)"
                             try {
-                                winget upgrade Git.Git --accept-source-agreements --accept-package-agreements
+                                winget upgrade Git.Git --accept-source-agreements --accept-package-agreements 2>&1 | ForEach-Object { Add-GitLog "      winget output: $_" }
                                 Write-Host "[完成] Git 升级完成！请重启终端" -ForegroundColor Green
+                                Add-GitLog "    RESULT: winget upgrade completed"
                             } catch {
                                 Write-Host "[X] 升级失败，请改用方式 [2]" -ForegroundColor Red
+                                Add-GitLog "    ERROR: winget upgrade failed: $($_.Exception.Message)"
                             }
                         } else {
                             Write-Host "[X] winget 不可用，请改用方式 [2]" -ForegroundColor Red
+                            Add-GitLog "    ERROR: winget not found on system"
                         }
                     }
                     '2' {
+                        Add-GitLog "  Method 2: Opening Git download page in browser"
                         Start-Process "https://git-scm.com/download/win"
                         Write-Host "[下载] 已打开 Git 下载页，请下载安装最新版" -ForegroundColor Green
+                        Add-GitLog "    RESULT: Browser opened to git-scm.com/download/win"
                     }
                     '3' {
+                        Add-GitLog "  Method 3: chocolatey upgrade git"
                         try {
-                            choco upgrade git -y
+                            choco upgrade git -y 2>&1 | ForEach-Object { Add-GitLog "      choco output: $_" }
                             Write-Host "[完成] Git 升级完成！请重启终端" -ForegroundColor Green
+                            Add-GitLog "    RESULT: choco upgrade completed"
                         } catch {
                             Write-Host "[X] chocolatey 不可用，请改用方式 [2]" -ForegroundColor Red
+                            Add-GitLog "    ERROR: choco upgrade failed: $($_.Exception.Message)"
                         }
                     }
                     default {
+                        Add-GitLog "  Method: skipped (user chose not to upgrade now)"
                         Write-Host "  已跳过升级。请从 https://git-scm.com/download 下载最新版" -ForegroundColor Gray
                     }
                 }
+            } else {
+                Add-GitLog "  Upgrade skipped by user"
             }
         }
     } else {
         Write-Host "[警告] 无法解析 Git 版本号: $gitVersion" -ForegroundColor Yellow
         Write-Host "       建议手动确认版本是否 >= $minGitVersionStr" -ForegroundColor Yellow
-        Add-GitLog "RESULT: Git version parse FAILED - format: $gitVersion"
+        Add-GitLog "RESULT: Git version parse FAILED - format not recognized"
+        Add-GitLog "  Input value: '$gitVersion'"
+        Add-GitLog "  Input type: $($gitVersion.GetType().Name)"
+        Add-GitLog "  Input length: $($gitVersion.Length)"
+        Add-GitLog "  Regex tried: 'version\s+(\d+)\.(\d+)\.(\d+)'"
+        Add-GitLog "  Suggestion: Check if git --version output format changed"
+        Add-GitLog "  Suggested action: Visit https://git-scm.com/download to check latest version"
     }
+} elseif (-not $gitInstalled) {
+    Add-GitLog "Step 5: Git version check SKIPPED (Git not installed)"
+} elseif ($gitVersion -eq "unknown") {
+    Add-GitLog "Step 5: Git version check SKIPPED (version unknown)"
+} elseif (-not $gitVersion) {
+    Add-GitLog "Step 5: Git version check SKIPPED (version string is empty/null)"
+} else {
+    Add-GitLog "Step 5: Git version check SKIPPED (gitInstalled=$gitInstalled, gitVersion='$gitVersion')"
 }
 
 # ============================================================
