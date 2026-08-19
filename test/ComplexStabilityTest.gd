@@ -140,7 +140,7 @@ func _test_purchase_atomicity():
 	# 2.1 背包仅剩 1 格时购买 5 个可堆叠材料（合并到已有堆叠）→ 应成功
 	# 先填满背包到只剩 1 格
 	_fill_inventory_until_n_empty(1)
-	var empty_before = inventory_script.get_empty_slot_count()
+	var _empty_before = inventory_script.get_empty_slot_count()
 	var gold_before_21 = shop_system.player_gold
 	var sp_before_21 = inventory_script.get_item_count("sandalwood_powder")
 	var ok1 = shop_system.purchase_item(shop_system.ShopType.GENERAL, "sandalwood_powder", 5, inventory_script)
@@ -234,7 +234,7 @@ func _test_economic_loop_10_rounds():
 	var success_rounds = 0
 
 	for round_num in range(1, 11):
-		var round_gold_before = shop_system.player_gold
+		var _round_gold_before = shop_system.player_gold
 		# 4.1 探索 1 次（欲界第一个地点）
 		var locations = map_system.get_available_locations()
 		if locations.size() == 0:
@@ -328,7 +328,7 @@ func _test_sell_stack_linkage():
 func _fill_inventory_until_n_empty(n: int):
 	# 用不同材料填满背包，直到只剩 n 个空格
 	while inventory_script.get_empty_slot_count() > n:
-		var fake_id = "incense_stick"  # 用同种堆叠会只占1格，所以改用装备类
+		var _fake_id = "incense_stick"  # 用同种堆叠会只占1格，所以改用装备类
 		if not inventory_script.add_item("wood_mala", 1):
 			break
 

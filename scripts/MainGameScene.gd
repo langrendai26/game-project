@@ -602,13 +602,15 @@ func _open_map_panel():
 				add_log(m)
 			# 领取探索金币奖励
 			var gold = r.get("gold_gained", 0)
-			if gold > 0 and shop_system:
-				shop_system.player_gold += gold
-				add_log("💰 探索获得金币 +%d（当前：%d）" % [gold, shop_system.player_gold])
+			var _shop = get_tree().get_first_node_in_group("shop")
+			if gold > 0 and _shop:
+				_shop.player_gold += gold
+				add_log("💰 探索获得金币 +%d（当前：%d）" % [gold, _shop.player_gold])
 			# 领取探索掉落物品
+			var _inv = get_tree().get_first_node_in_group("inventory")
 			for item in r.get("items_gained", []):
 				if item is Dictionary and item.has("id"):
-					var ok = inventory_script.add_item(item["id"])
+					var ok = _inv.add_item(item["id"])
 					if ok:
 						add_log("📦 获得物品：%s" % item.get("name", item["id"]))
 		)
